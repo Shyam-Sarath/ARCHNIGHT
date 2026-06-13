@@ -40,6 +40,8 @@ export function VoiceCallSimulator({ onBookingCreated, onNewNotification }: Voic
   const [extractedData, setExtractedData] = useState<any>(null);
   const [confidence, setConfidence] = useState<any>(null);
   const [bookingDetails, setBookingDetails] = useState<any>(null);
+  const [speechAvailable, setSpeechAvailable] = useState(false);
+  const [voiceList, setVoiceList] = useState<SpeechSynthesisVoice[]>([]);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -50,13 +52,28 @@ export function VoiceCallSimulator({ onBookingCreated, onNewNotification }: Voic
 
   useEffect(() => {
     if (typeof window !== "undefined" && "speechSynthesis" in window) {
-      synthRef.current = window.speechSynthesis;
-      synthRef.current.getVoices();
+      const speech = window.speechSynthesis;
+      synthRef.current = speech;
+
+      const loadVoices = () => {
+        const voices = speech.getVoices();
+        if (voices.length > 0) {
+          setVoiceList(voices);
+          setSpeechAvailable(true);
+        }
+      };
+
+      loadVoices();
+      speech.onvoiceschanged = loadVoices;
     }
+
     return () => {
       stopRecordingTimer();
       stopSpeechRecognition();
       synthRef.current?.cancel();
+      if (synthRef.current) {
+        synthRef.current.onvoiceschanged = null;
+      }
     };
   }, []);
 
@@ -79,10 +96,48 @@ export function VoiceCallSimulator({ onBookingCreated, onNewNotification }: Voic
     return `${m}:${s}`;
   }
 
-  function getSafeSpeechLang(langCode: string) {
-    const voices = synthRef.current?.getVoices() ?? [];
+  function getLanguageCode(language: Language) {
+    switch (language) {
+      case "Tamil":
+        return "ta-IN";
+      case "Hindi":
+        return "hi-IN";
+      default:
+        return "en-IN";
+    }
+  }
+
+  function getLanguagePrompt(language: Language) {
+    switch (language) {
+      case "Tamil":
+        return "Vanakkam. Please say your name, village, crop, and crop weight.";
+      case "Hindi":
+        return "Namaste. Please say your name, village, crop, and crop weight.";
+      default:
+        return "Hello. Please tell us your name, village, crop, and crop weight.";
+    }
+  }
+
+  function getConfirmationText(language: Language, weight: number, crop: string, village: string, bId: string) {
+    switch (language) {
+      case "Tamil":
+        return `Nandri. We recorded ${weight} kilo ${crop} from ${village}. Your booking ID is ${bId}.`;
+      case "Hindi":
+        return `Dhanyavaad. We recorded ${weight} kilo ${crop} from ${village}. Your booking ID is ${bId}.`;
+      default:
+        return `Thank you. We recorded ${weight} kilograms of ${crop} from ${village}. Your booking ID is ${bId}.`;
+    }
+  }
+
+  function getSpeechVoice(langCode: string) {
+    const voices = voiceList.length > 0 ? voiceList : synthRef.current?.getVoices() ?? [];
     const requestedPrefix = langCode.slice(0, 2).toLowerCase();
-    return voices.some((voice) => voice.lang.toLowerCase().startsWith(requestedPrefix)) ? langCode : "en-IN";
+    return (
+      voices.find((voice) => voice.lang.toLowerCase().startsWith(requestedPrefix)) ||
+      voices.find((voice) => voice.lang.toLowerCase().startsWith("en")) ||
+      voices[0] ||
+      null
+    );
   }
 
   function speak(text: string, langCode = "en-IN", onEnd?: () => void) {
@@ -93,8 +148,16 @@ export function VoiceCallSimulator({ onBookingCreated, onNewNotification }: Voic
 
     synthRef.current.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = getSafeSpeechLang(langCode);
+    const voice = getSpeechVoice(langCode);
+    if (voice) {
+      utterance.voice = voice;
+      utterance.lang = voice.lang;
+    } else {
+      utterance.lang = langCode;
+    }
     utterance.rate = 0.95;
+    utterance.volume = 1;
+    utterance.pitch = 1;
     utterance.onend = () => onEnd?.();
     utterance.onerror = () => onEnd?.();
     synthRef.current.speak(utterance);
@@ -125,23 +188,18 @@ export function VoiceCallSimulator({ onBookingCreated, onNewNotification }: Voic
   function selectLanguage(lang: Language) {
     setSelectedLanguage(lang);
     setStatusText(`Call started: ${lang}`);
-    const prompt =
-      lang === "Tamil"
-        ? "Vanakkam. Please say your name, village, crop, and crop weight."
-        : lang === "Hindi"
-          ? "Namaste. Please say your name, village, crop, and crop weight."
-          : "Hello. Please tell us your name, village, crop, and crop weight.";
-    const speechLang = lang === "Tamil" ? "ta-IN" : lang === "Hindi" ? "hi-IN" : "en-IN";
-    speak(prompt, speechLang, startRecording);
+    const prompt = getLanguagePrompt(lang);
+    const speechLang = getLanguageCode(lang);
+    speak(prompt, speechLang, () => startRecording(lang));
   }
 
-  async function startRecording() {
+  async function startRecording(language: Language) {
     liveTranscriptRef.current = "";
     setTranscript("");
     setCallState("RECORDING");
     setStatusText("Listening...");
     startRecordingTimer();
-    startSpeechRecognition();
+    startSpeechRecognition(language);
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -163,7 +221,7 @@ export function VoiceCallSimulator({ onBookingCreated, onNewNotification }: Voic
     }
   }
 
-  function startSpeechRecognition() {
+  function startSpeechRecognition(language: Language) {
     if (typeof window === "undefined") return;
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) return;
@@ -171,7 +229,7 @@ export function VoiceCallSimulator({ onBookingCreated, onNewNotification }: Voic
     const recognition = new SpeechRecognition();
     recognition.continuous = true;
     recognition.interimResults = true;
-    recognition.lang = selectedLanguage === "Tamil" ? "ta-IN" : selectedLanguage === "Hindi" ? "hi-IN" : "en-IN";
+    recognition.lang = language === "Tamil" ? "ta-IN" : language === "Hindi" ? "hi-IN" : "en-IN";
     recognition.onresult = (event: any) => {
       let interimText = "";
       for (let index = event.resultIndex; index < event.results.length; index += 1) {
@@ -225,14 +283,14 @@ export function VoiceCallSimulator({ onBookingCreated, onNewNotification }: Voic
     formData.append("audio_file", audioBlob, "call_recording.webm");
     formData.append("language", selectedLanguage);
     appendBestTranscript(formData);
-    await processUpload(formData);
+    await processUpload(formData, selectedLanguage);
   }
 
   async function uploadTranscriptOnly() {
     const formData = new FormData();
     formData.append("language", selectedLanguage);
     appendBestTranscript(formData);
-    await processUpload(formData);
+    await processUpload(formData, selectedLanguage);
   }
 
   function appendBestTranscript(formData: FormData) {
@@ -242,7 +300,7 @@ export function VoiceCallSimulator({ onBookingCreated, onNewNotification }: Voic
     }
   }
 
-  async function processUpload(formData: FormData) {
+  async function processUpload(formData: FormData, language: Language) {
     setCallState("AI_PROCESSING");
     setStatusText("Processing with AI...");
     const res = await api.uploadVoice(formData);
@@ -251,10 +309,10 @@ export function VoiceCallSimulator({ onBookingCreated, onNewNotification }: Voic
       setStatusText("Processing failed. Please try again.");
       return;
     }
-    handleCallSuccess(res);
+    handleCallSuccess(res, language);
   }
 
-  function handleCallSuccess(res: any) {
+  function handleCallSuccess(res: any, language: Language) {
     setTranscript(res.transcript);
     setExtractedData(res.extracted);
     setConfidence(res.confidence);
@@ -266,13 +324,8 @@ export function VoiceCallSimulator({ onBookingCreated, onNewNotification }: Voic
     const weight = res.extracted.weight || 0;
     const village = res.extracted.village || "Village";
     const bId = res.booking?.id || res.id;
-    const confirmation =
-      selectedLanguage === "Tamil"
-        ? `Nandri. We recorded ${weight} kilo ${crop} from ${village}. Your booking ID is ${bId}.`
-        : selectedLanguage === "Hindi"
-          ? `Dhanyavaad. We recorded ${weight} kilo ${crop} from ${village}. Your booking ID is ${bId}.`
-          : `Thank you. We recorded ${weight} kilograms of ${crop} from ${village}. Your booking ID is ${bId}.`;
-    speak(confirmation, selectedLanguage === "English" ? "en-IN" : selectedLanguage === "Tamil" ? "ta-IN" : "hi-IN");
+    const confirmation = getConfirmationText(language, weight, crop, village, bId);
+    speak(confirmation, getLanguageCode(language));
 
     onBookingCreated?.();
     if (onNewNotification && res.booking) {
@@ -302,7 +355,7 @@ export function VoiceCallSimulator({ onBookingCreated, onNewNotification }: Voic
       formData.append("language", lang);
       formData.append("demo_type", lang === "Tamil" ? "ta" : lang === "Hindi" ? "hi" : "en");
       formData.append("transcript_text", demoTranscripts[lang]);
-      await processUpload(formData);
+      await processUpload(formData, lang);
     }, 1200);
   }
 
@@ -353,6 +406,12 @@ export function VoiceCallSimulator({ onBookingCreated, onNewNotification }: Voic
                 <p className="mt-2 text-xs font-bold uppercase tracking-wider text-field">Booking Created</p>
                 <p className="text-lg font-black text-white">{bookingDetails?.id || "KB1024"}</p>
                 <p className="text-[10px] text-stone-400">SMS confirmation sent</p>
+              </div>
+            )}
+
+            {!speechAvailable && (
+              <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-left text-[11px] text-amber-800">
+                Voice playback is currently unavailable in this browser. Please check your audio device settings or use a different browser.
               </div>
             )}
           </div>
