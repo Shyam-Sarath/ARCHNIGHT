@@ -17,6 +17,10 @@ export type FarmerOrder = {
   individualCost: number;
   sharedCost: number;
   pickupTime: string;
+  source?: string;
+  language?: string;
+  confidence?: Record<string, number> | null;
+  reviewRequired?: boolean;
 };
 
 export type Driver = {

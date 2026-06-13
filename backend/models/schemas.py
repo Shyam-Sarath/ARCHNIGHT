@@ -21,6 +21,10 @@ class Booking(BookingCreate):
     individual_cost: int
     shared_cost: int
     pickup_time: str
+    source: str = "Web Dashboard"
+    language: str = "en"
+    confidence: dict[str, int] | None = None
+    review_required: bool = False
 
 
 class Driver(BaseModel):

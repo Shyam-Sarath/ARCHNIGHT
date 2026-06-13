@@ -17,7 +17,7 @@ export function TacticalMap({ orders }: { orders: FarmerOrder[] }) {
         <path d="M145 165 C198 160 250 145 320 130" fill="none" stroke="#2f7f8f" strokeWidth="4" />
         <circle cx="140" cy="110" fill="#4f7d5a22" r="95" stroke="#4f7d5a" strokeWidth="2" />
         {points.map((point, index) => (
-          <g key={point.label}>
+          <g key={`${point.label}-${index}`}>
             <circle cx={point.x} cy={point.y} fill={index === 3 ? "#d44d3d" : "#4f7d5a"} r={11} />
             <text fill="#312a24" fontSize="12" fontWeight="700" x={point.x + 14} y={point.y + 5}>
               {point.label}

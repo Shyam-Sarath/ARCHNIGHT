@@ -1,30 +1,58 @@
 "use client";
 
 import { BadgeIndianRupee, ClipboardCheck, Send, Truck } from "lucide-react";
-import { useState } from "react";
-import { bids as seedBids, drivers, farmerOrders } from "@/services/demoData";
-import type { Bid } from "@/types";
+import { useEffect, useState } from "react";
+import { api } from "@/services/api";
+import type { Bid, Driver, FarmerOrder } from "@/types";
 import { StatusPill } from "@/components/StatusPill";
 
 export function DriverDashboard() {
-  const [bids, setBids] = useState<Bid[]>(seedBids);
+  const [bids, setBids] = useState<Bid[]>([]);
+  const [orders, setOrders] = useState<FarmerOrder[]>([]);
+  const [drivers, setDrivers] = useState<Driver[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  function submitBid(formData: FormData) {
-    const amount = Number(formData.get("bid") || 4500);
-    setBids([
-      {
-        id: `B${804 + bids.length}`,
-        driverName: "Your Vehicle",
-        vehicle: "Mini Truck",
-        amount,
-        reliabilityScore: 90,
-        status: "Open"
-      },
-      ...bids
-    ]);
+  async function loadData() {
+    try {
+      const [fetchedBids, fetchedOrders, fetchedDrivers] = await Promise.all([
+        api.getBids(),
+        api.getOrders(),
+        api.getDrivers()
+      ]);
+      setBids(fetchedBids);
+      setOrders(fetchedOrders);
+      setDrivers(fetchedDrivers);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
   }
 
-  const totalWeight = farmerOrders.reduce((sum, order) => sum + order.weightKg, 0);
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  async function submitBid(formData: FormData) {
+    const amount = Number(formData.get("bid") || 4500);
+    const payload = {
+      driver_name: "Your Vehicle",
+      vehicle: "Mini Truck",
+      amount,
+      reliability_score: 90
+    };
+
+    try {
+      const newBid = await api.submitBid(payload);
+      if (newBid) {
+        setBids([newBid, ...bids]);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  }
+
+  const totalWeight = orders.reduce((sum, order) => sum + order.weightKg, 0);
 
   return (
     <div className="grid gap-5 xl:grid-cols-[0.85fr_1.15fr]">
@@ -77,7 +105,7 @@ export function DriverDashboard() {
         <form action={submitBid} className="mt-4 flex flex-wrap gap-3">
           <label className="flex min-w-64 flex-1 items-center gap-2 rounded-lg border border-stone-300 px-3 py-2">
             <BadgeIndianRupee size={18} />
-            <input className="w-full outline-none" min="1" name="bid" placeholder="Driver Bid" type="number" />
+            <input className="w-full outline-none" min="1" name="bid" placeholder="Driver Bid" type="number" required />
           </label>
           <button className="focus-ring inline-flex items-center gap-2 rounded-lg bg-soil px-4 py-2 font-semibold text-white" type="submit">
             <Send size={18} />
@@ -86,30 +114,34 @@ export function DriverDashboard() {
         </form>
 
         <div className="mt-4 overflow-x-auto">
-          <table className="w-full min-w-[620px] text-left text-sm">
-            <thead className="text-stone-500">
-              <tr>
-                <th className="py-2">Driver</th>
-                <th>Vehicle</th>
-                <th>Bid Amount</th>
-                <th>Reliability</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {bids.map((bid) => (
-                <tr className="border-t border-stone-200" key={bid.id}>
-                  <td className="py-3 font-semibold">{bid.driverName}</td>
-                  <td>{bid.vehicle}</td>
-                  <td>Rs {bid.amount.toLocaleString("en-IN")}</td>
-                  <td>{bid.reliabilityScore}%</td>
-                  <td>
-                    <StatusPill status={bid.status} />
-                  </td>
+          {loading ? (
+            <p className="text-sm text-stone-500">Loading bids...</p>
+          ) : (
+            <table className="w-full min-w-[620px] text-left text-sm">
+              <thead className="text-stone-500">
+                <tr>
+                  <th className="py-2">Driver</th>
+                  <th>Vehicle</th>
+                  <th>Bid Amount</th>
+                  <th>Reliability</th>
+                  <th>Status</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {bids.map((bid) => (
+                  <tr className="border-t border-stone-200" key={bid.id}>
+                    <td className="py-3 font-semibold">{bid.driverName}</td>
+                    <td>{bid.vehicle}</td>
+                    <td>Rs {bid.amount.toLocaleString("en-IN")}</td>
+                    <td>{bid.reliabilityScore}%</td>
+                    <td>
+                      <StatusPill status={bid.status} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
       </section>
 
