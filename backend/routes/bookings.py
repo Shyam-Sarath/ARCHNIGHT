@@ -27,10 +27,10 @@ def list_bookings():
                 individual_cost=row["individual_cost"],
                 shared_cost=row["shared_cost"],
                 pickup_time=row["pickup_time"] or "Awaiting cluster",
-                source=row.get("source", "Web Dashboard"),
-                language=row.get("language", "en"),
-                confidence=row.get("confidence", None),
-                review_required=row.get("review_required", False)
+                source=row["source"] if "source" in row else "Web Dashboard",
+                language=row["language"] if "language" in row else "en",
+                confidence=row["confidence"] if "confidence" in row else None,
+                review_required=row["review_required"] if "review_required" in row else False
             ))
         return bookings
     except Exception as e:

@@ -90,29 +90,25 @@ def _normalize_text(text: str) -> str:
 
 
 def _clean_farmer_name(name: str) -> str:
-    words = []
-    for raw_word in _normalize_text(name).split():
-        word = raw_word.strip(" .,'-")
-        if not word or word.lower() in NAME_STOP_WORDS:
-            break
-        words.append(word)
+    words = [word for word in name.split() if word.strip(" .,'-") and word.strip(" .,'-").lower() not in NAME_STOP_WORDS]
     if not words:
         return "Unknown Farmer"
     return " ".join(words[:3]).title()
 
 
 def _extract_name(transcript: str) -> tuple[str, int]:
-    normalized = _normalize_text(transcript)
+    words = transcript.split()
     for pattern in NAME_PATTERNS:
-        match = pattern.search(normalized)
-        if match:
-            name = _clean_farmer_name(match.group(1))
-            if name != "Unknown Farmer":
-                return name, 92
+        for word in words:
+            match = pattern.search(word)
+            if match:
+                name = _clean_farmer_name(match.group(1))
+                if name != "Unknown Farmer":
+                    return name, 92
 
     titled_words = [
         word.strip(" .,'-")
-        for word in normalized.split()
+        for word in words
         if word.strip(" .,'-").istitle() and word.lower() not in NAME_STOP_WORDS
     ]
     if titled_words:
@@ -121,19 +117,20 @@ def _extract_name(transcript: str) -> tuple[str, int]:
 
 
 def _extract_weight(transcript: str) -> tuple[int, int]:
-    normalized = transcript.lower().replace(",", " ")
+    words = transcript.lower().split()
     patterns = [
         r"(\d{1,5})\s*(?:kg|kgs|kilo|kilos|kilogram|kilograms)",
         r"(?:weight|weighs|have|has|paas|kitta|transport|send|load|crop)\D{0,30}(\d{1,5})",
         r"(\d{1,3})\s*(?:bag|bags|sack|sacks)",
     ]
-    for pattern in patterns:
-        match = re.search(pattern, normalized)
-        if match:
-            value = int(match.group(1))
-            if "bag" in match.group(0) or "sack" in match.group(0):
-                value *= 50
-            return value, 96
+    for word in words:
+        for pattern in patterns:
+            match = re.search(pattern, word)
+            if match:
+                value = int(match.group(1))
+                if "bag" in match.group(0) or "sack" in match.group(0):
+                    value *= 50
+                return value, 96
     return 0, 35
 
 
